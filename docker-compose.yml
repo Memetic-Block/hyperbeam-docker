@@ -1,0 +1,60 @@
+name: hyperbeam-docker
+
+services:
+  hyperbeam-edge:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+    image: memetic-block/hyperbeam-docker:edge
+    command: rebar3 as genesis_wasm shell
+    ports:
+      - 8734:8734
+    volumes:
+      - hyperbeam-edge:/app/cache-mainnet
+      - ./config.flat:/app/config.flat
+      - ${WALLET_FILE}:/app/wallet.json
+  hyperbeam-edge-ephemeral:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+    image: memetic-block/hyperbeam-docker:edge-ephemeral
+    command: rebar3 as genesis_wasm shell
+    ports:
+      - 8734:8734
+    volumes:
+      - ./config.flat:/app/config.flat
+      - ${WALLET_FILE}:/app/wallet.json
+  hyperbeam-edge-release:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+    image: memetic-block/hyperbeam-docker:edge-release
+    ports:
+      - 8734:8734
+    environment:
+      - HB_CONFIG=/app/_build/genesis_wasm/rel/hb/config.json
+      - HB_KEY=/app/_build/genesis_wasm/rel/hb/wallet.json
+    volumes:
+      - hyperbeam-edge-release:/app/cache-mainnet # NB: container dir is probably wrong for release
+      # - ./config-release.json:/app/_build/genesis_wasm/rel/hb/config.json
+      - ./config.release.flat:/app/_build/genesis_wasm/rel/hb/config.flat
+      - ${WALLET_FILE}:/app/_build/genesis_wasm/rel/hb/wallet.json
+  hyperbeam-edge-release-ephemeral:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+    image: memetic-block/hyperbeam-docker:edge-release-ephemeral
+    ports:
+      - 8734:8734
+    environment:
+      - HB_CONFIG=/app/_build/genesis_wasm/rel/hb/config.json
+      - HB_KEY=/app/_build/genesis_wasm/rel/hb/wallet.json
+    volumes:
+      # - ./config-release.json:/app/_build/genesis_wasm/rel/hb/config.json
+      - ./config.release.flat:/app/_build/genesis_wasm/rel/hb/config.flat
+      - ${WALLET_FILE}:/app/_build/genesis_wasm/rel/hb/wallet.json
+volumes:
+  hyperbeam-edge:
+    driver: local
+  hyperbeam-edge-release:
+    driver: local
