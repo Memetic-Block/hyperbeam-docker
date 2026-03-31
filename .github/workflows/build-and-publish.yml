@@ -24,7 +24,7 @@ jobs:
       - name: Build image
         run: |
           docker build . \
-            --file geneis_wasm.Dockerfile \
+            --file genesis_wasm.Dockerfile \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
             --build-arg VERSION=${{ github.event.inputs.version }}
