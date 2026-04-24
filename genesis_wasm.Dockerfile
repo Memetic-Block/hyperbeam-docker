@@ -36,7 +36,7 @@ RUN git clone https://github.com/erlang/rebar3.git && \
 
 ## Install rust from rustup (faster, recommended)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
-    --default-toolchain 1.86.0 -y
+    --default-toolchain 1.95 -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 ## Install Node.js with nvm
