@@ -1,0 +1,22 @@
+{
+  "name": "ao-test",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Smoke tests for AO functionality on a HyperBEAM node, using bun + @permaweb/aoconnect",
+  "scripts": {
+    "info": "bun run node-info-test.ts",
+    "arweave": "bun run arweave-spawn-eval-test.ts",
+    "evm": "bun run evm-spawn-eval-test.ts",
+    "smoke": "bun run node-info-test.ts && bun run arweave-spawn-eval-test.ts"
+  },
+  "dependencies": {
+    "@dha-team/arbundles": "^1.0.3",
+    "@permaweb/aoconnect": "^0.0.98",
+    "arweave": "^1.15.7",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

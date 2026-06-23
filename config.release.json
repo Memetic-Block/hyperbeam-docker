@@ -1,0 +1,5 @@
+{
+  "priv_key_location": "/app/_build/genesis_wasm/rel/hb/wallet.json",
+  "scheduler-default-commitment-spec": "ans104@1.0",
+  "relay-allow-commit-request": true
+}
