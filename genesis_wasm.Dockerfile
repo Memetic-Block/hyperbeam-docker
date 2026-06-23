@@ -53,8 +53,10 @@ ENV PATH="$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH"
 
 WORKDIR /app
 ARG VERSION='edge'
-RUN git clone https://github.com/permaweb/hyperbeam.git --depth 1 . && \
-    git checkout $VERSION
+RUN git init . && \
+    git remote add origin https://github.com/permaweb/hyperbeam.git && \
+    git fetch --depth 1 origin $VERSION && \
+    git checkout FETCH_HEAD
 RUN rebar3 compile
 
 CMD [ "rebar3", "as", "genesis_wasm", "shell" ]
