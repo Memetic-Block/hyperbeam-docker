@@ -43,6 +43,12 @@ RUN git init . && \
     git checkout FETCH_HEAD
 RUN rebar3 compile
 
+## Entrypoint: fail-closed wallet check + SIGTERM-driven shutdown (the bare
+## BEAM ignores SIGTERM and would only ever die by SIGKILL).
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
+STOPSIGNAL SIGTERM
+ENV HB_WALLET_PATH=/app/wallet.json
+ENTRYPOINT [ "/entrypoint.sh" ]
 CMD [ "rebar3", "shell" ]
 
 FROM build AS release
@@ -50,4 +56,5 @@ COPY config.flat /app/config.flat
 RUN rebar3 release
 WORKDIR /app/_build/default/rel/hb/
 
+ENV HB_WALLET_PATH=/app/_build/default/rel/hb/wallet.json
 CMD [ "./bin/hb", "foreground" ]
