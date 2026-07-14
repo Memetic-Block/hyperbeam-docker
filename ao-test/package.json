@@ -1,19 +1,22 @@
 {
   "name": "ao-test",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Smoke tests for AO functionality on a HyperBEAM node, using bun + @permaweb/aoconnect",
+  "description": "Smoke tests for AO on a HyperBEAM node with lua-device compute, using bun + @permaweb/aoconnect",
   "scripts": {
+    "publish": "bun run publish-module.ts",
     "info": "bun run node-info-test.ts",
-    "arweave": "bun run arweave-spawn-eval-test.ts",
-    "evm": "bun run evm-spawn-eval-test.ts",
-    "smoke": "bun run node-info-test.ts && bun run arweave-spawn-eval-test.ts"
+    "arweave": "bun run arweave-spawn-test.ts",
+    "evm": "bun run evm-spawn-test.ts",
+    "revert": "bun run revert-on-error-test.ts",
+    "nested": "bun run nested-state-test.ts",
+    "smoke": "bun run node-info-test.ts && bun run arweave-spawn-test.ts && bun run evm-spawn-test.ts",
+    "full": "bun run node-info-test.ts && bun run arweave-spawn-test.ts && bun run evm-spawn-test.ts && bun run revert-on-error-test.ts && bun run nested-state-test.ts"
   },
   "dependencies": {
     "@dha-team/arbundles": "^1.0.3",
-    "@permaweb/aoconnect": "^0.0.98",
-    "arweave": "^1.15.7",
+    "@permaweb/aoconnect": "0.0.98",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

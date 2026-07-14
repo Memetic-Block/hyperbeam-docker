@@ -6,6 +6,13 @@ on:
       version:
         description: 'Commit SHA or tag (from HyperBEAM repo) to build the image from.'
         required: true
+      flavor:
+        description: 'Image flavor: mainnet (lua compute) or the deprecated genesis_wasm build.'
+        type: choice
+        default: mainnet
+        options:
+          - mainnet
+          - genesis_wasm
 env:
   IMAGE_NAME: hyperbeam-docker
 
@@ -23,8 +30,15 @@ jobs:
 
       - name: Build image
         run: |
-          docker build . \
-            --file genesis_wasm.Dockerfile \
+          if [ "${{ github.event.inputs.flavor }}" == "genesis_wasm" ]; then
+            CONTEXT=legacy
+            DOCKERFILE=legacy/genesis_wasm.Dockerfile
+          else
+            CONTEXT=.
+            DOCKERFILE=Dockerfile
+          fi
+          docker build $CONTEXT \
+            --file $DOCKERFILE \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
             --build-arg VERSION=${{ github.event.inputs.version }}
@@ -42,6 +56,8 @@ jobs:
           [[ "${{ github.event.inputs.version }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
           # Use Docker `latest` tag convention
           [ "$VERSION" == "main" ] && VERSION=stage
+          # Deprecated genesis_wasm builds get a suffixed tag
+          [ "${{ github.event.inputs.flavor }}" == "genesis_wasm" ] && VERSION=${VERSION}-genesis-wasm
           echo IMAGE_ID=$IMAGE_ID
           echo GHCR_IMAGE_ID=$GHCR_IMAGE_ID
           echo VERSION=$VERSION

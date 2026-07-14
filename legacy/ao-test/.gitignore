@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.tgz
+
+# Never commit wallets / keys
+test-keys/
+*.wallet.json
+wallet.json
+arweave-key.json
+*.pem

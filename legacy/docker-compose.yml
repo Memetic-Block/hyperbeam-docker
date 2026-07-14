@@ -1,0 +1,82 @@
+# DEPRECATED: genesis_wasm-based images, kept as a known-working config base.
+# See the repo root for the current mainnet (lua) setup.
+#
+# Run with -f so paths and .env resolve relative to this file:
+#   podman compose -f legacy/docker-compose.yml up hyperbeam-edge
+name: hyperbeam-docker-legacy
+
+# latest image to use -> ghcr.io/memetic-block/hyperbeam-docker:v0.9-final
+
+services:
+  hyperbeam-edge:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+      target: build
+    # image: memetic-block/hyperbeam-docker:edge
+    command: rebar3 as genesis_wasm shell
+    ports:
+      - 8734:8734
+    volumes:
+      - hyperbeam-edge:/app/cache-mainnet
+      - ./config.flat:/app/config.flat:ro,z
+      - ${WALLET_FILE}:/app/wallet.json:ro,z
+  hyperbeam-edge-ephemeral:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+      target: build
+    # image: memetic-block/hyperbeam-docker:edge
+    env_file: .env
+    command: rebar3 as genesis_wasm shell
+    ports:
+      - 8734:8734
+    volumes:
+      - ./config.flat:/app/config.flat:ro,z
+      - ${WALLET_FILE}:/app/wallet.json:ro,z
+  hyperbeam-edge-release:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+    # image: memetic-block/hyperbeam-docker:edge-release
+    ports:
+      - 8734:8734
+    # environment:
+    #   - HB_CONFIG=/app/_build/genesis_wasm/rel/hb/config.json
+    #   - HB_KEY=/app/_build/genesis_wasm/rel/hb/wallet.json
+    volumes:
+      - hyperbeam-edge-release:/app/cache-mainnet # NB: container dir is probably wrong for release
+      # - ./config-release.json:/app/_build/genesis_wasm/rel/hb/config.json:ro
+      - ./config.release.flat:/app/_build/genesis_wasm/rel/hb/config.flat:ro,z
+      - ${WALLET_FILE}:/app/_build/genesis_wasm/rel/hb/wallet.json:ro,z
+  hyperbeam-edge-release-ephemeral:
+    build:
+      context: .
+      dockerfile: ./genesis_wasm.Dockerfile
+    # image: memetic-block/hyperbeam-docker:edge-release
+    ports:
+      - 8734:8734
+    # environment:
+      # - HB_CONFIG=/app/_build/genesis_wasm/rel/hb/config.json
+      # - HB_KEY=/app/_build/genesis_wasm/rel/hb/wallet.json
+    volumes:
+      # - ./config-release.json:/app/_build/genesis_wasm/rel/hb/config.json:ro
+      - ./config.release.flat:/app/_build/genesis_wasm/rel/hb/config.flat:ro,z
+      - ${WALLET_FILE}:/app/_build/genesis_wasm/rel/hb/wallet.json:ro,z
+  # Runs the prebuilt release image (pinned at the top of this file) instead of
+  # building from source — for quick smoke tests against ao-test/.
+  hyperbeam-edge-release-image:
+    image: ghcr.io/memetic-block/hyperbeam-docker:v0.9-final
+    environment:
+      # Typed config (booleans/lists) must come from JSON; .flat coerces to strings.
+      HB_CONFIG: config.json
+    ports:
+      - 8734:8734
+    volumes:
+      - ./config.release.json:/app/_build/genesis_wasm/rel/hb/config.json:ro,z
+      - ${WALLET_FILE}:/app/_build/genesis_wasm/rel/hb/wallet.json:ro,z
+volumes:
+  hyperbeam-edge:
+    driver: local
+  hyperbeam-edge-release:
+    driver: local

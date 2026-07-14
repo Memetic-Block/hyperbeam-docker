@@ -1,5 +1,5 @@
-// Liveness smoke test: confirm the HyperBEAM node is up, report its
-// operator/scheduler address, and confirm the lua device is preloaded.
+// Liveness smoke test: confirm the HyperBEAM node is up and report its
+// operator/scheduler address (the default scheduler/authority for spawns).
 
 import 'dotenv/config'
 import { resolveAuthority } from './helpers'
@@ -19,12 +19,4 @@ run('node-info', async () => {
   const address = (await resolveAuthority(HB_URL)).trim()
   info('node address', address)
   check(address.length > 0, 'node returned a non-empty operator/scheduler address')
-
-  // Informational only: the preloaded-devices list serializes as links, so
-  // device names aren't greppable here. The spawn tests are the real proof
-  // that the lua device works.
-  step('List preloaded devices (informational)')
-  const devices = await fetch(`${HB_URL}/~meta@1.0/info/preloaded-devices/serialize~json@1.0`)
-  checkEqual(devices.status, 200, 'node serves its preloaded-devices list')
-  info('devices (truncated)', (await devices.text()).slice(0, 200))
 })

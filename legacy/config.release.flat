@@ -1,4 +1,4 @@
-priv_key_location: /app/_build/default/rel/hb/wallet.json
+priv_key_location: /app/_build/genesis_wasm/rel/hb/wallet.json
 # aoconnect spawns processes with `signing-format: ans104`. The scheduler's
 # default commitment spec must match, or the scheduler rejects the process with
 # `process_not_verified`. (Forward's nodes use ans104@1.0; the stock default is

@@ -1,10 +1,14 @@
 # Docker Images for HyperBEAM
 
-Dockerized setup for running [HyperBEAM](https://github.com/permaweb/hyperbeam) nodes. Builds HyperBEAM from source with all dependencies (Erlang 27, Rebar3, Rust 1.86, Node.js 22) and provides multiple service profiles for development and production use.
+Dockerized setup for running [HyperBEAM](https://github.com/permaweb/hyperbeam) AO mainnet nodes. Builds HyperBEAM from source with all dependencies (Erlang 27, Rebar3, Rust 1.95) using the default rebar3 profile, where the lua device (`~lua@5.3a`) is the AO compute method.
+
+Builds are pinned to the `v0.9-FINAL` tag of HyperBEAM by default (see the `VERSION` build arg).
+
+> **Legacy:** the previous genesis_wasm-based setup (for legacy `ao.TN.1` wasm processes) is deprecated and lives in [legacy/](legacy/) as a known-working config base.
 
 ## Prerequisites
 
-- Docker and Docker Compose
+- Docker/Podman and Compose
 - An Arweave wallet file (JSON keyfile)
 
 ## Quick Start
@@ -18,7 +22,7 @@ export WALLET_FILE=/path/to/wallet.json
 Run a node with persistent cache:
 
 ```sh
-docker compose up hyperbeam-edge
+docker compose up hyperbeam
 ```
 
 The node will be available on port **8734**.
@@ -27,14 +31,14 @@ The node will be available on port **8734**.
 
 | Service | Mode | Cache | Description |
 |---|---|---|---|
-| `hyperbeam-edge` | Dev shell | Persistent | Development node with a named volume for `cache-mainnet` |
-| `hyperbeam-edge-ephemeral` | Dev shell | Ephemeral | Development node with no persistent cache |
-| `hyperbeam-edge-release` | Release | Persistent | Production release build with a named volume |
-| `hyperbeam-edge-release-ephemeral` | Release | Ephemeral | Production release build with no persistent cache |
+| `hyperbeam` | Dev shell | Persistent | Development node with a named volume for `cache-mainnet` |
+| `hyperbeam-ephemeral` | Dev shell | Ephemeral | Development node with no persistent cache |
+| `hyperbeam-release` | Release | Persistent | Production release build with a named volume |
+| `hyperbeam-release-ephemeral` | Release | Ephemeral | Production release build with no persistent cache |
 
 ### Dev shell vs Release
 
-- **Dev shell** services run via `rebar3 as genesis_wasm shell` — useful for development, debugging, and live interaction with the Erlang shell.
+- **Dev shell** services run via `rebar3 shell` — useful for development, debugging, and live interaction with the Erlang shell.
 - **Release** services use a compiled OTP release (`./bin/hb foreground`) — suitable for production deployments.
 
 ## Configuration
@@ -44,32 +48,39 @@ Configuration is provided via `.flat` files mounted into the container:
 - [config.flat](config.flat) — used by dev shell services
 - [config.release.flat](config.release.flat) — used by release services
 
-Both files set `priv_key_location` to the path where the wallet is mounted inside the container. Uncomment the `gateway` line to use a custom gateway (e.g. Turbo).
+Both files set `priv_key_location` to the path where the wallet is mounted inside the container. Note that typed config values (booleans/lists) must come from a JSON config ([config.release.json](config.release.json)) via `HB_CONFIG`; `.flat` coerces values to strings.
+
+## AO compute
+
+This image does **not** include the genesis_wasm server, so it will not compute legacy `ao.TN.1` (wasm) processes. Mainnet processes must declare their own `execution-device` — spawn with `execution-device: lua@5.3a` and a lua module (lua **source** published to Arweave, not a wasm binary) to run AO processes on this node. For legacy wasm processes, use the [legacy](legacy/) image.
+
+## Smoke tests
+
+[ao-test/](ao-test/) contains bun + aoconnect smoke tests that spawn lua-device processes against a running node: Arweave- and EVM-signed interactions, revert-on-error semantics, and a comparison of read paths for nested process state. See its README for setup (the lua module must be published once).
 
 ## Build
 
 To build the image without starting a service:
 
 ```sh
-docker compose build hyperbeam-edge
+docker compose build hyperbeam
 ```
 
-The Dockerfile clones the `edge` branch of HyperBEAM by default. To build a different version, set the `VERSION` build arg:
+The Dockerfile builds the `v0.9-FINAL` tag of HyperBEAM by default. To build a different version, set the `VERSION` build arg:
 
 ```sh
-docker compose build --build-arg VERSION=main hyperbeam-edge
+docker compose build --build-arg VERSION=edge hyperbeam
 ```
 
 ## Volumes
 
-Persistent services use named Docker volumes to retain `cache-mainnet` data across restarts:
+Persistent services use named volumes to retain `cache-mainnet` data across restarts:
 
-- `hyperbeam-edge` — dev shell cache
-- `hyperbeam-edge-release` — release cache
+- `hyperbeam` — dev shell cache
+- `hyperbeam-release` — release cache
 
 To reset the cache, remove the volume:
 
 ```sh
-docker volume rm hyperbeam-docker_hyperbeam-edge
+docker volume rm hyperbeam-docker_hyperbeam
 ```
-
