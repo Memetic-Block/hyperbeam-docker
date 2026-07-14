@@ -11,6 +11,7 @@
     "evm": "bun run evm-spawn-test.ts",
     "revert": "bun run revert-on-error-test.ts",
     "nested": "bun run nested-state-test.ts",
+    "payload": "bun run payload-size-test.ts",
     "smoke": "bun run node-info-test.ts && bun run arweave-spawn-test.ts && bun run evm-spawn-test.ts",
     "full": "bun run node-info-test.ts && bun run arweave-spawn-test.ts && bun run evm-spawn-test.ts && bun run revert-on-error-test.ts && bun run nested-state-test.ts"
   },

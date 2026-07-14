@@ -22,6 +22,9 @@ in luerl (a Lua VM inside the BEAM). No genesis-wasm server, no wasm.
 3. **Deeply nested state exposure** — `nested-state-test.ts` compares four
    read paths (per-key, node-serialized JSON, module-rendered JSON string,
    prerendered HTML).
+4. **Single-message payload ceiling** — `payload-size-test.ts` probes how big
+   one message can be (motivated by batching all node scores into one
+   Add-Scores message instead of many).
 
 ## Setup
 
@@ -88,9 +91,23 @@ There are two layers, and neither gives legacynet semantics for free
 | **Uncaught** lua error | `dev_lua` errors, `dev_process` does not store the slot | reverted by construction | **BRICKED** ✗ — the poisoned assignment stays at its slot: `/now` returns 500 and no later message can compute (confirmed by `revert-on-error-test.ts` Part B) |
 
 **Takeaway:** revert-on-error is the module's job, and pcall is not optional —
-an uncaught error permanently wedges the process. `smoke.lua` deep-copies its
-managed `state` table before dispatching and restores it on any handler error —
-copy that pattern into real modules.
+an uncaught error permanently wedges the process. `smoke.lua`'s `compute` is
+the pattern to copy: a **trampoline that must be trivially infallible** —
+snapshot the managed state (itself under pcall), pcall a `protected_compute`
+that contains *everything* fallible (state init, dispatch, rendering), restore
+the snapshot on failure, and assemble `results` with plain table construction
+only. The rule: any line outside a pcall must be incapable of throwing.
+
+What the pattern does NOT cover (keep these in mind for real modules):
+
+- **Module top-level errors** — code outside `compute` runs at VM init; if it
+  throws, every slot fails and the process is unusable from birth. Keep
+  top-level code minimal and lint/parse before publishing.
+- **VM-level failures** — out-of-memory or a luerl internal crash isn't
+  catchable by pcall; an infinite loop doesn't error at all, it hangs the
+  compute. pcall guards against *lua* errors only.
+- **Deliberate `error()` outside the pcall** — smoke.lua's `fail-uncaught` is
+  a test hook; real modules should have no such paths.
 
 ### Nested state: read-path comparison
 
@@ -117,6 +134,28 @@ only if views get big enough to want their own publish cycle.
 carries `commitments` / `ao-types` bookkeeping on every submessage. Module
 renders must filter these keys (see `jsonencode` in `smoke.lua`), and don't be
 surprised to see them in node-serialized JSON either.
+
+### Message payload size (single Add-Scores feasibility)
+
+Verified against a local `v0.9-final` node (2026-07-13), JSON-shaped payloads
+through push → schedule → luerl compute → byte-exact result:
+
+- **16 KiB → 2 MiB (~27k node-score entries) all pass**, each slot computing
+  in ≤ 1s. No transport ceiling found at realistic fleet sizes.
+- Source-level: HyperBEAM has **no HTTP body cap** (`read_body` loops until
+  done) and **no scheduler size check** (v0.9-FINAL).
+- The node's archival uploads to the bundler are **fire-and-forget**
+  (`hb_client:upload` results ignored by `dev_scheduler_server`), so bundler
+  limits can't block scheduling. During the probe `up.arweave.net` returned
+  200 even for the 1–2 MiB items. **Caveat:** a 200 from the bundler ≠
+  permanently seeded to Arweave — for auditability, spot-check that large
+  messages actually land on a gateway, and remember a silent archival failure
+  leaves the message only in the node's local cache.
+- `data-length` measures transport, not parsing: a real Add-Scores handler
+  must decode the JSON inside luerl (pure-lua decoder; expect it to dominate
+  slot time at MiB sizes). If that bites, send scores as **structured message
+  keys via an httpsig-signed request** (aoconnect `request()`) so lua receives
+  a table with no JSON parse, or chunk into a few 100–500 KiB batches.
 
 ## Files
 

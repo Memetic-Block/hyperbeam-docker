@@ -87,6 +87,13 @@ handlers['set-note'] = function (base, req)
   return 'note set: ' .. key
 end
 
+--- Echo the byte length of the message data payload. Used to probe how large
+--- a single message (e.g. a batched Add-Scores) can be end-to-end: client →
+--- push → schedule → luerl compute → result.
+handlers['data-length'] = function (base, req)
+  return tostring(#(req.data or ''))
+end
+
 --- Write a deterministic deeply nested structure, leaf = `value` tag.
 handlers['deep-set'] = function (base, req)
   base.state.deep = {
@@ -109,10 +116,10 @@ handlers['fail-then-mutate'] = function (base, req)
   base.state.counters.count = base.state.counters.count + 1000 -- luacheck: ignore
 end
 
-function compute(base, assignment, opts)
-  local req = assignment.body or {}
-  local action = req.action or 'ping'
-
+--- Everything fallible for a slot: state init, handler dispatch, rendering.
+--- Runs inside pcall from compute() — an error anywhere in here is caught and
+--- the pre-slot snapshot is restored.
+local function protected_compute(base, req, action)
   -- First message: initialize managed state.
   base.state = base.state or {
     counters = { count = 0 },
@@ -123,25 +130,49 @@ function compute(base, assignment, opts)
   base.state.notes = base.state.notes or {}
   base.state.deep = base.state.deep or {}
 
-  -- Raised outside the pcall on purpose: the slot itself must error.
+  local handler = handlers[action]
+  if not handler then
+    error('unknown action: ' .. tostring(action))
+  end
+  local result = handler(base, req)
+  render(base)
+  return result
+end
+
+--- The entry point is a trampoline that must be TRIVIALLY INFALLIBLE: any
+--- error that escapes compute() fails the slot at the node level, and a slot
+--- that can never compute permanently wedges the process (verified against
+--- v0.9-final — /now 500s and no later message can compute). So nothing out
+--- here but pcalls and plain table construction.
+function compute(base, assignment, opts)
+  local req = assignment.body or {}
+  local action = req.action or 'ping'
+
+  -- TEST HOOK ONLY: deliberately raised outside the protected region so the
+  -- test suite can observe node-level slot-error behavior. Real modules must
+  -- not have paths like this.
   if action == 'fail-uncaught' then
     error('uncaught failure requested; slot must error and state must not advance')
   end
 
-  local snapshot = deepcopy(base.state)
-  local handler = handlers[action]
-  local ok, result = pcall(function ()
-    if not handler then
-      error('unknown action: ' .. tostring(action))
-    end
-    return handler(base, req)
-  end)
-
-  if not ok then
-    base.state = snapshot -- revert: a failed handler never mutates state
-    result = 'error: ' .. tostring(result)
+  -- Snapshot first; if even snapshotting fails, bail WITHOUT touching state.
+  local snapok, snapshot = pcall(deepcopy, base.state)
+  if not snapok then
+    base.results = {
+      outbox = {},
+      output = { data = 'error: could not snapshot state: ' .. tostring(snapshot) }
+    }
+    return base
   end
-  render(base)
+
+  local ok, result = pcall(protected_compute, base, req, action)
+  if not ok then
+    base.state = snapshot -- revert: a failed slot never mutates state
+    result = 'error: ' .. tostring(result)
+    -- Re-render views of the restored state; belt-and-braces pcall so a
+    -- render bug can't escape the trampoline.
+    pcall(render, base)
+  end
   base.results = {
     outbox = {},
     output = { data = result }
