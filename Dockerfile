@@ -37,10 +37,31 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 ## processes are NOT supported by this image — see legacy/ for that.
 WORKDIR /app
 ARG VERSION='v0.9-FINAL'
+## Whether to apply our version-scoped source patches (patches/$VERSION/). Set to
+## anything but "true" to build VANILLA upstream at $VERSION — e.g. to A/B a fix
+## against the unpatched image.
+ARG APPLY_PATCHES=true
 RUN git init . && \
     git remote add origin https://github.com/permaweb/hyperbeam.git && \
     git fetch --depth 1 origin $VERSION && \
     git checkout FETCH_HEAD
+
+## Backport upstream fixes absent from the pinned $VERSION. Patches are scoped by
+## target version: only patches/<VERSION>/*.patch are applied, so building any other
+## tag/sha (e.g. VERSION=edge) stays vanilla. Each patch cites its upstream commit +
+## the docs/hyperbeam-migration/UPSTREAM-ISSUES.md id it closes. Applied from /app
+## (the git tree) with -p1; fail-fast on any reject within the matched version.
+COPY patches /tmp/patches
+RUN set -eu; \
+    dir="/tmp/patches/$VERSION"; \
+    if [ "$APPLY_PATCHES" != "true" ]; then \
+        echo "== APPLY_PATCHES=$APPLY_PATCHES → skipping patches (vanilla $VERSION)"; \
+    elif [ -d "$dir" ]; then \
+        for p in "$dir"/*.patch; do [ -e "$p" ] || continue; echo "== applying $p"; git apply --verbose "$p"; done; \
+    else \
+        echo "== no patches for VERSION=$VERSION; building vanilla upstream"; \
+    fi
+
 RUN rebar3 compile
 
 ## Entrypoint: fail-closed wallet check + SIGTERM-driven shutdown (the bare

@@ -1,0 +1,28 @@
+Backport of upstream permaweb/HyperBEAM 04b7b2b7 ("Optimize codec ID generation
+hot paths", 2026-06-23, 262 commits past v0.9-FINAL), reduced to the minimal fix.
+
+message_to_ordered_list/2 eagerly evaluated erlang:hd(SortedKeys) to pass as the
+pivot argument. For an emptied or meta-only map (e.g. a committed empty map
+#{<<"commitments">> => ...}) SortedKeys is [] -> hd([]) -> badarg. That crashed
+dev_lua:decode after any compute that leaves a Lua state map empty (removing its
+last key), 400ing the push AND corrupting the slot checkpoint -> the process
+wedges permanently (all subsequent reads 500). Fixed upstream on edge/v1.0; this
+guards the empty case so the map decodes to [] instead of crashing.
+
+See anyone-protocol docs/hyperbeam-migration/UPSTREAM-ISSUES.md (A15).
+
+diff --git a/src/hb_util.erl b/src/hb_util.erl
+--- a/src/hb_util.erl
++++ b/src/hb_util.erl
+@@ -499,7 +499,10 @@ message_to_ordered_list(Message, Opts) ->
+             fun hb_ao:normalize_key/1,
+             lists:sort(lists:map(fun int/1, Keys))
+         ),
+-    message_to_ordered_list(NormMessage, SortedKeys, erlang:hd(SortedKeys), Opts).
++    case SortedKeys of
++        [] -> [];
++        [First | _] -> message_to_ordered_list(NormMessage, SortedKeys, First, Opts)
++    end.
+ message_to_ordered_list(_Message, [], _Key, _Opts) ->
+     [];
+ message_to_ordered_list(Message, [Key|Keys], Key, Opts) ->

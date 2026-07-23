@@ -13,6 +13,14 @@ on:
         options:
           - mainnet
           - genesis_wasm
+      apply_patches:
+        description: 'Apply our version-scoped source patches (patches/<version>/). Uncheck to build vanilla upstream.'
+        type: boolean
+        default: true
+      image_tag:
+        description: 'Optional: override the published tag. Blank = <version>, or <version>-patched when patches apply.'
+        required: false
+        default: ''
 env:
   IMAGE_NAME: hyperbeam-docker
 
@@ -41,7 +49,8 @@ jobs:
             --file $DOCKERFILE \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
-            --build-arg VERSION=${{ github.event.inputs.version }}
+            --build-arg VERSION=${{ github.event.inputs.version }} \
+            --build-arg APPLY_PATCHES=${{ github.event.inputs.apply_patches }}
 
       - name: Log in to registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $ --password-stdin
@@ -58,6 +67,14 @@ jobs:
           [ "$VERSION" == "main" ] && VERSION=stage
           # Deprecated genesis_wasm builds get a suffixed tag
           [ "${{ github.event.inputs.flavor }}" == "genesis_wasm" ] && VERSION=${VERSION}-genesis-wasm
+          # Patched builds get a distinct tag so vanilla and patched of the same
+          # upstream version coexist. `-patched` only when patches were actually
+          # applied (toggle on AND a patches/<version>/ dir exists). image_tag overrides.
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            VERSION="${{ github.event.inputs.image_tag }}"
+          elif [ "${{ github.event.inputs.apply_patches }}" == "true" ] && [ -d "patches/${{ github.event.inputs.version }}" ]; then
+            VERSION=${VERSION}-patched
+          fi
           echo IMAGE_ID=$IMAGE_ID
           echo GHCR_IMAGE_ID=$GHCR_IMAGE_ID
           echo VERSION=$VERSION
