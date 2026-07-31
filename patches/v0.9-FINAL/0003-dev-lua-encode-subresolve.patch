@@ -1,0 +1,73 @@
+NOT a backport — this fix does not exist upstream. Blocks using `lua@5.3a` as a device
+on the `on/request` / `on/response` hooks, which is what the write-gate design needs.
+
+`dev_lua:do_encode/2` passes any term it does not recognise straight through to
+`luerl:encode/2`, whose final clause is `error({badarg, Term})`. An `{as, Device, Msg}`
+subresolve directive is one such term, and it appears in the `body' of every hook message
+whose request was path-composed — `POST /<id>~process@1.0/push`, i.e. every write to a
+process. So a Lua device on a hook works for simple paths and crashes for exactly the
+requests a gate exists to inspect.
+
+The failure is near-invisible: the badarg is raised inside the VM call, and `dev_p4`
+reports only "Could not estimate price of request." (HTTP 400) with no trace. It reads
+like a bug in the Lua script. `HB_PRINT=lua_error,lua` is the only way to see the cause.
+
+Encoded exactly as `hb_ao:subresolve/4` interprets the directive — the message with
+`device` set to `DevID`. That is what the term means, and what the `<id>~process@1.0` path
+syntax expands to (`hb_singleton`: `Part~Device => {as, Device, #{path => Part}}`), so a
+script sees an ordinary message carrying a device. Overwriting an existing `device` is the
+semantics rather than a collision, and `undefined` means "leave it alone", mirroring the
+matching clause in `subresolve/4`. Guarded on `is_map` — the only shape `hb_singleton`
+produces — so anything else falls through and behaves as it does today.
+
+DELIBERATELY NARROW — do not generalise this to "render any unencodable tuple as a
+string". That variant was built and tested first, and it breaks the device sandbox: the
+`{error, {device_not_loadable, _}}` that a `device-sandbox` denial produces stops being a
+hard failure and becomes an ordinary string the script reads and returns successfully.
+`dev_lua:ao_core_sandbox_test` catches it, and softening a sandbox denial is not something
+this fix needs to do.
+
+Validated on this image at v0.9-FINAL: upstream `dev_lua` + `dev_p4` eunit 20/20 (same as
+stock), D10 E2E 21/21, and an 11/11 spike proving a Lua pricing device admits an
+allow-listed signer's write, refuses a non-allow-listed one at the request hook, and that
+the refused write consumes no scheduler slot. Reproduce with
+anyone-protocol `smart-contracts/ao/scripts/probe/p4-lua-pricing.ts`.
+
+diff --git a/src/dev_lua.erl b/src/dev_lua.erl
+index b2a5d41e..e938fdb6 100644
+--- a/src/dev_lua.erl
++++ b/src/dev_lua.erl
+@@ -462,6 +462,33 @@ do_encode(List, Opts) when is_list(List) ->
+     );
+ do_encode(Atom, _Opts) when is_atom(Atom) and (Atom /= false) and (Atom /= true)->
+     hb_util:bin(Atom);
++do_encode({as, undefined, Msg}, Opts) when is_map(Msg) ->
++    do_encode(Msg, Opts);
++do_encode({as, DevID, Msg}, Opts) when is_map(Msg) ->
++    % An `{as, Device, Msg}' subresolve directive. These appear in the `body' of any hook
++    % message whose request was path-composed -- `/<id>~process@1.0/push' produces one --
++    % and `luerl:encode/2' has no clause for them, so it raises `{badarg, Term}' from
++    % inside the VM call. That makes `lua@5.3a' unusable as a device on `on/request' or
++    % `on/response' for exactly the requests a hook most needs to see, and the caller
++    % reports only a generic failure (`dev_p4' turns it into "Could not estimate price of
++    % request."), so the cause is invisible without a stack trace.
++    %
++    % Encoded the way `hb_ao:subresolve/4' itself interprets the directive -- the message
++    % with `device' set to `DevID' -- so a script sees an ordinary message carrying a
++    % device, which is what the term means and what `<id>~process@1.0' expands to.
++    % Overwriting an existing `device' is the semantics, not a collision. `undefined' means
++    % "leave the device alone", mirroring the matching clause in `subresolve/4'.
++    %
++    % Guarded on `is_map' because that is the only shape produced: `hb_singleton' documents
++    % `Part~Device => {as, Device, #{ path => Part }}' and its `do_build/4' guards on it.
++    % Any other shape falls through to the clause below and behaves exactly as it does now.
++    %
++    % Deliberately narrow. A general "render any unencodable tuple as a string" fallback
++    % also works and is tempting, but it converts the `{error, {device_not_loadable, _}}'
++    % that a `device-sandbox' denial produces from a hard failure into an ordinary string
++    % the script reads and returns -- `ao_core_sandbox_test' asserts that denial stays an
++    % error, and softening it is a security-relevant change that this fix does not need.
++    do_encode(Msg#{ <<"device">> => DevID }, Opts);
+ do_encode(Other, _Opts) ->
+     Other.
+ 
