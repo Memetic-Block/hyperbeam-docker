@@ -1,0 +1,61 @@
+Fixes the same defect as upstream permaweb/HyperBEAM's `fix/bundler-corruption-20260518`
+line (0510a6ac / 47c7c496, merged 2026-05-29 in #916 — 5 to 15 days past v0.9-FINAL), by
+the smaller of the two available routes. See "Why this shape" below.
+
+Self-hosted bundling is dead at v0.9-FINAL: the node signs, prices and MINES the bundle
+transaction, then every chunk POST is rejected `400 data_root_not_found` forever. The
+transaction is paid for and its data never lands.
+
+The cause is an ASYMMETRIC conversion. `execute_task(post_tx)` builds `Committed` from the
+signed transaction WITH `bundle => true` on both sides; `execute_task(build_proofs)`
+converts it back WITHOUT the flag:
+
+    post_tx:      convert(SignedTX,  {structured@1.0, bundle}, {tx@1.0, bundle}) -> Committed
+    build_proofs: convert(Committed,  tx@1.0,          structured@1.0)           -> TX
+
+so `TX#tx.data_size` is not `SignedTX#tx.data_size`. The transaction HEADER, meanwhile, is
+posted from `SignedTX`. The merkle root the proofs are built against therefore describes a
+payload that was never posted, and no Arweave node can accept those chunks — correctly.
+
+Measured on hb-dev, a 9-item bundle:
+
+    sum of the 9 item sizes                     13,121
+    ANS-104 bundle header (32 + 64 x 9 items)  +   608
+                                               --------
+                                                13,729   == the posted header's data_size
+    what build_proofs used                      23,076   == 9,347 bytes that do not exist
+
+WHY THIS SHAPE. Two routes restore symmetry: drop the flag from the forward conversion
+(what upstream did), or add it to the reverse one (this patch). Upstream's route is the
+better end state, but it is the riskier BACKPORT, because the unflagged round trip is not
+exercised by any test at this version and upstream needed later codec work to make it
+exact (e.g. 3108b8d3, "preserve signed TX fields during parsing", 2026-08-13).
+
+The flagged round trip, by contrast, is already proven lossless HERE:
+`build_signed_tx_on_arbundles_js_test/0` in this very module converts a signed TX out and
+back with `bundle => true` on both sides and asserts `SignedTX =:= SignedTXRoundtrip`. This
+patch simply makes production take that same tested path. It also touches ONE conversion
+and leaves `post_tx` — including `hb_message:id/3` and `dev_bundler_cache:write_tx/3`,
+which both consume `Committed` — completely unchanged.
+
+Drop this patch when VERSION is bumped past the upstream fix; do not carry it forward, as
+upstream's shape (unflagged both ways, and posting `Committed` rather than `SignedTX` so
+the two cannot diverge at all) supersedes it.
+
+See anyone-protocol docs/hyperbeam-migration/UPSTREAM-ISSUES.md (WS-6 bundling).
+
+diff --git a/src/dev_bundler_task.erl b/src/dev_bundler_task.erl
+--- a/src/dev_bundler_task.erl
++++ b/src/dev_bundler_task.erl
+@@ -76,7 +76,10 @@ execute_task(#task{type = build_proofs, data = CommittedTX, opts = Opts} = Task)
+         ?event(debug_bundler, log_task(executing_task, Task, [])),
+         % Calculate chunks and proofs
+         TX = hb_message:convert(
+-            CommittedTX, <<"tx@1.0">>, <<"structured@1.0">>, Opts),
++            CommittedTX,
++            #{ <<"device">> => <<"tx@1.0">>, <<"bundle">> => true },
++            #{ <<"device">> => <<"structured@1.0">>, <<"bundle">> => true },
++            Opts),
+         Data = TX#tx.data,
+         DataRoot = TX#tx.data_root,
+         DataSize = TX#tx.data_size,
