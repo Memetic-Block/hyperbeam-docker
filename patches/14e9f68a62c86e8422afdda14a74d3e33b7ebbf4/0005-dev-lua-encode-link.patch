@@ -1,0 +1,76 @@
+NOT a backport - this fix does not exist upstream. Companion to 0003: same function, same
+reason, a different unencodable term.
+
+`dev_lua:do_encode/2` recurses through maps and lists and passes anything else through to
+`luerl:encode/2`, whose final clause is `error({badarg, Term})`. A CACHE LINK - `{link, ID,
+#{<<"lazy">> => false, <<"type">> => <<"link">>}}` - is such a term, and links appear in
+practically every message a hook is asked to price.
+
+The `hb_cache:ensure_all_loaded/2` calls already in the map and list clauses do NOT cover it,
+which is the part that is easy to get wrong. They run on the ALREADY-CONVERTED `[{Key, Value}]`
+proplist, and `ensure_all_loaded/3`'s list clause numbers the list and recurses per ELEMENT - so
+each element is the whole `{Key, Value}` tuple, which is not a link, and its value is never
+looked at. Every map converted to a proplist therefore keeps its links, and every message is
+such a map.
+
+WHAT IT COST US. Self-hosted bundling was enabled on stage and live on 2026-08-27 by config
+alone and publishing stopped dead. The node posts each scheduled message and assignment to its
+own `~bundler@1.0/tx`; that POST runs the `on/request` hooks, p4 asks the Lua write-gate to
+price it, the request fails to ENCODE, and `dev_p4` reports "Could not estimate price of
+request." (HTTP 400). `dev_scheduler_server` DISCARDS the upload result
+(`dev_scheduler_server.erl:266-269`), so the refusal is dropped and never retried: slots keep
+advancing and their assignments never reach Arweave. Eight stage slots were lost that way before
+it was reverted. Dev was unaffected only because its pricing device is `faff@1.0`, a built-in
+that never encodes anything into Lua.
+
+⚠️ It is NOT the write-gate's `n == 0 -> REFUSE` rule, which was the obvious suspect and the
+wrong one. Verified by substitution: a gate whose `estimate` returns ADMIT unconditionally fails
+identically, and the UNMODIFIED gate admits the upload once this patch is in. The gate needs no
+change and was not changed.
+
+Loading the link where it is found, rather than reordering the `ensure_all_loaded` calls, keeps
+the existing traversal intact and costs nothing for a message with no links. A link encodes as
+the value it points at, so a script sees an ordinary value.
+
+Deliberately narrow, for the reason 0003 records: a general "render any unencodable tuple"
+fallback turns the `{error, {device_not_loadable, _}}` of a `device-sandbox` denial into a
+string the script reads and returns. `ao_core_sandbox_test` asserts that denial stays an error.
+
+VALIDATED on this image (edge @ 14e9f68a + 0002 + 0003): upstream `dev_lua` 22/22 and `dev_p4`
+3/3 pass with the clause in place, and on a locally gated node the write-gate as deployed admits
+the node's own upload - message and assignment both reach the bundler - while an unsigned
+chargeable request and a stranger's write are still refused. Reproduce with anyone-protocol
+`smart-contracts/ao/scripts/probe/gated-bundler-repro.ts`.
+
+diff --git a/src/preloaded/vm/dev_lua.erl b/src/preloaded/vm/dev_lua.erl
+index 788e5ecf..76ba256a 100644
+--- a/src/preloaded/vm/dev_lua.erl
++++ b/src/preloaded/vm/dev_lua.erl
+@@ -511,6 +511,27 @@ do_encode({as, DevID, Msg}, Opts) when is_map(Msg) ->
+     % the script reads and returns -- `ao_core_sandbox_test' asserts that denial stays an
+     % error, and softening it is a security-relevant change that this fix does not need.
+     do_encode(Msg#{ <<"device">> => DevID }, Opts);
++do_encode(Link, Opts) when ?IS_LINK(Link) ->
++    % A cache link. `do_encode/2' recurses through maps and lists and passes anything else
++    % through untouched, so a link reaches `luerl:encode/2', whose final clause is
++    % `error({badarg, Term})'. The message then fails to encode at all and the caller sees only a
++    % generic failure -- `dev_p4' turns it into "Could not estimate price of request." (HTTP 400).
++    %
++    % The `hb_cache:ensure_all_loaded/2' calls in the map and list clauses above do NOT cover
++    % this. They are applied to the ALREADY-CONVERTED `[{Key, Value}]' proplist, and
++    % `ensure_all_loaded/3's list clause numbers the list and recurses on each ELEMENT -- so each
++    % element is the whole `{Key, Value}' tuple, which is not a link, and its value is never
++    % examined. Links therefore survive inside every map that was converted to a proplist, which
++    % is every message.
++    %
++    % Loading here rather than reordering those calls keeps the traversal as it is and costs
++    % nothing when a message carries no links. A link encodes as the value it points at, which is
++    % what a link means, so a script sees an ordinary value and needs no link handling of its own.
++    %
++    % Same narrowness as the `{as, ...}' clause above, and for the same reason: only a term this
++    % code can interpret is converted. `{error, {device_not_loadable, _}}' still reaches the
++    % clause below and stays a hard failure, which `ao_core_sandbox_test' asserts.
++    do_encode(hb_cache:ensure_loaded(Link, Opts), Opts);
+ do_encode(Other, _Opts) ->
+     Other.
+ 
