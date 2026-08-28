@@ -23,10 +23,19 @@ advancing and their assignments never reach Arweave. Eight stage slots were lost
 it was reverted. Dev was unaffected only because its pricing device is `faff@1.0`, a built-in
 that never encodes anything into Lua.
 
-⚠️ It is NOT the write-gate's `n == 0 -> REFUSE` rule, which was the obvious suspect and the
-wrong one. Verified by substitution: a gate whose `estimate` returns ADMIT unconditionally fails
-identically, and the UNMODIFIED gate admits the upload once this patch is in. The gate needs no
-change and was not changed.
+⚠️ THIS PATCH ALONE IS NOT ENOUGH. It is the FIRST of two independent causes. Once the request
+encodes, the gate sees an UNSIGNED envelope - `hb_http:post` never commits what it sends; the
+signature rides on the nested item named by `bundler-subject` - and its `n == 0 -> REFUSE` rule
+rejects it, where `dev_faff`'s `lists:all` over an empty signer list admits it vacuously. That
+needs a matching change in anyone-protocol `smart-contracts/ao/runtime/write-gate.lua`, which
+judges the bundler POST on its subject. Both fixes are required; neither alone moves a byte.
+
+⚠️ An earlier version of this header claimed the gate needed no change, on the strength of a
+substitution test: a gate returning ADMIT unconditionally failed identically. That test was
+INVALID - without this patch the request never encodes, so the gate is never reached and every
+gate variant fails the same way for a reason that has nothing to do with the gate. Re-run on the
+patched image, the substitution separates them cleanly: admit-all uploads, the unmodified gate
+does not. A substitution test only means something once the substituted component is reachable.
 
 Loading the link where it is found, rather than reordering the `ensure_all_loaded` calls, keeps
 the existing traversal intact and costs nothing for a message with no links. A link encodes as
@@ -37,10 +46,11 @@ fallback turns the `{error, {device_not_loadable, _}}` of a `device-sandbox` den
 string the script reads and returns. `ao_core_sandbox_test` asserts that denial stays an error.
 
 VALIDATED on this image (edge @ 14e9f68a + 0002 + 0003): upstream `dev_lua` 22/22 and `dev_p4`
-3/3 pass with the clause in place, and on a locally gated node the write-gate as deployed admits
-the node's own upload - message and assignment both reach the bundler - while an unsigned
-chargeable request and a stranger's write are still refused. Reproduce with anyone-protocol
-`smart-contracts/ao/scripts/probe/gated-bundler-repro.ts`.
+3/3 pass with the clause in place, and the `luerl:encode/2` badarg is gone - the gate's `estimate`
+is now reached for the node's own bundler POST, which it never was before. With the matching
+write-gate change, message and assignment both reach the bundler while an unsigned chargeable
+request and a stranger's write are still refused, and the gate suite stays 16/16. Reproduce with
+anyone-protocol `smart-contracts/ao/scripts/probe/gated-bundler-repro.ts`.
 
 diff --git a/src/preloaded/vm/dev_lua.erl b/src/preloaded/vm/dev_lua.erl
 index 788e5ecf..76ba256a 100644
