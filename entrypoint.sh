@@ -1,24 +1,5 @@
 #!/bin/sh
-# Container entrypoint for hyperbeam-docker images. Fixes two fail-open
-# behaviors of a bare `hb foreground` container (both verified against the
-# v0.9-FINAL image, 2026-07-13):
-#
-# 1. Identity is fail-closed: HyperBEAM silently mints a fresh wallet when
-#    none exists at priv_key_location. Here the container refuses to start
-#    unless the wallet file at $HB_WALLET_PATH exists, or the operator
-#    explicitly opts into an ephemeral identity with
-#    HB_ALLOW_EPHEMERAL_WALLET=true.
-#
-# 2. SIGTERM actually stops the node — as gracefully as upstream allows.
-#    Measured behavior of the bare image: the BEAM (PID 1, relx foreground,
-#    +Bd) ignores SIGTERM outright, and `bin/hb stop` (rpc init:stop) WEDGES
-#    partway through application shutdown — the node keeps answering pings in
-#    `terminating` state indefinitely. So on SIGTERM we kick off `hb stop`
-#    without blocking on it, give the VM $HB_SHUTDOWN_GRACE seconds (default
-#    30) to exit cleanly — the path that wins if upstream fixes the wedge —
-#    then hard-kill. The elmdb cache is LMDB, which is transactionally
-#    crash-safe, so the hard kill loses at most uncommitted work. Pair with a
-#    Nomad kill_timeout comfortably above the grace period.
+# Container entrypoint for hyperbeam-docker images. See README.md, "Runtime behavior (entrypoint)".
 
 HB_SHUTDOWN_GRACE="${HB_SHUTDOWN_GRACE:-30}"
 
@@ -33,6 +14,8 @@ if [ ! -f "$HB_WALLET_PATH" ]; then
     exit 1
   fi
 fi
+
+export HB_KEY="$HB_WALLET_PATH"
 
 "$@" &
 child=$!

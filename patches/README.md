@@ -53,3 +53,20 @@ saved the rebase; it would only have bought a staler commit. Pin edge HEAD.
 ⚠️ Hunks here were generated mechanically from a real edit plus `git diff`, not hand-written, and
 verified to apply **in sequence** to a pristine checkout of this sha. Hand-authored hunk headers
 have produced `corrupt patch at line NN` in this repo before.
+
+## `v0.11` (= `80a72735`)
+
+No patch directory, so `VERSION=v0.11` builds vanilla upstream and publishes as `v0.11` with no
+`-patched` suffix.
+
+| patch | state at this tag |
+|---|---|
+| ~~`0001-a15-lua-empty-map-decode-crash.patch`~~, ~~`0004-bundler-asymmetric-bundle-flag.patch`~~ | Dropped at `14e9f68a`; both fixes are still in place at this tag. |
+| ~~`0002-luerl-gc-after-compute.patch`~~ | **DROPPED, upstream** (`851e725b`). `process_response/3` stores `luerl:gc(NewState)` on every call, the same collect at the same point. [#1062](https://github.com/permaweb/HyperBEAM/pull/1062) is superseded. |
+| ~~`0003-dev-lua-encode-subresolve.patch`~~ | **DROPPED, not upstream** ([#1063](https://github.com/permaweb/HyperBEAM/pull/1063), open). `do_encode/2` still has no `{as, ...}` clause. The directive arrives in hook messages for path-composed requests, so it only matters for a Lua device on `on/request` or `on/response`. |
+| ~~`0005-dev-lua-encode-link.patch`~~ | **DROPPED, not upstream.** Same condition as 0003: `ensure_all_loaded` returns an `{as, ...}` directive untouched, so links inside one reach `luerl:encode/2`, and only hook messages carry the directive. |
+
+The `14e9f68a.../` copies of 0003 and 0005 are not enough for a Lua request hook on v0.11. Its path
+parser turns a keyed base such as `/<id>~process@1.0/push` into `{as, Dev, <<"ao:<id>">>}`, a
+binary rather than a map, which 0003's `is_map` guard misses. A hook needs a further clause that
+encodes it as `#{path => <id>}`, the way `hb_singleton:smallest/1` reads it.
