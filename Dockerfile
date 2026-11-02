@@ -36,7 +36,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 ## device (~lua@5.3a) as the compute method. Legacy ao.TN.1 (genesis_wasm)
 ## processes are NOT supported by this image — see legacy/ for that.
 WORKDIR /app
-ARG VERSION='v0.9-FINAL'
+ARG VERSION='v0.11'
 ## Whether to apply our version-scoped source patches (patches/$VERSION/). Set to
 ## anything but "true" to build VANILLA upstream at $VERSION — e.g. to A/B a fix
 ## against the unpatched image.

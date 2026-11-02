@@ -20,11 +20,8 @@ run('node-info', async () => {
   info('node address', address)
   check(address.length > 0, 'node returned a non-empty operator/scheduler address')
 
-  // Informational only: the preloaded-devices list serializes as links, so
-  // device names aren't greppable here. The spawn tests are the real proof
-  // that the lua device works.
-  step('List preloaded devices (informational)')
-  const devices = await fetch(`${HB_URL}/~meta@1.0/info/preloaded-devices/serialize~json@1.0`)
-  checkEqual(devices.status, 200, 'node serves its preloaded-devices list')
-  info('devices (truncated)', (await devices.text()).slice(0, 200))
+  step('Preloaded device store (informational)')
+  const store = await fetch(`${HB_URL}/~meta@1.0/info/preloaded-store/serialize~json@1.0`)
+  checkEqual(store.status, 200, 'node reports its preloaded device store')
+  info('preloaded-store', (await store.text()).slice(0, 200))
 })

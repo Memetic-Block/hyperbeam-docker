@@ -1,7 +1,7 @@
 name: hyperbeam-docker
 
 # HyperBEAM AO mainnet node built with the default rebar3 profile — the lua
-# device (~lua@5.3a) is the compute method. Pinned to v0.9-FINAL via the
+# device (~lua@5.3a) is the compute method. Pinned to v0.11 via the
 # Dockerfile's VERSION build arg; override it to build another tag/SHA.
 
 services:
